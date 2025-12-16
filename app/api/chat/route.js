@@ -1,54 +1,54 @@
+// app/api/chat/route.js
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebaseAdmin.js";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Handle only POST requests
 export async function POST(req) {
   try {
-    const { message, tier = "free", userId = "guest" } = await req.json();
+    const { messages } = await req.json();
 
-    if (!message) {
-      return NextResponse.json({ ok: false, error: "Missing message" });
+    if (!messages || messages.length === 0) {
+      return NextResponse.json(
+        { error: "No messages provided" },
+        { status: 400 }
+      );
     }
 
-    const userRef = db.collection("users").doc(userId);
-    const doc = await userRef.get();
-
-    let userData;
-
-    if (!doc.exists) {
-      userData = { tier, credits: 10 };
-      await userRef.set(userData);
-      console.log("🆕 Created new user:", userData);
-    } else {
-      userData = doc.data();
-    }
-
-    if (userData.credits <= 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "No credits remaining",
-        remainingCredits: 0,
-      });
-    }
-
-    // For now just echo the message — we’ll switch to OpenAI after credit tracking is confirmed
-    const reply = `Echo: ${message}`;
-    const updatedCredits = userData.credits - 1;
-
-    await userRef.update({ credits: updatedCredits });
-    console.log(`💰 Updated credits for ${userId}: ${updatedCredits}`);
-
-    return NextResponse.json({
-      ok: true,
-      reply,
-      remainingCredits: updatedCredits,
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages,
     });
-  } catch (err) {
-    console.error("🔥 Chat route error:", err);
-    return NextResponse.json({ ok: false, error: err.message });
+
+    const reply = completion.choices[0]?.message?.content || "No response.";
+
+    return new NextResponse(JSON.stringify({ reply }), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*", // important for frontend calls
+      },
+    });
+  } catch (error) {
+    console.error("Error in /api/chat:", error);
+    return NextResponse.json(
+      { error: "Server error. Check backend logs." },
+      { status: 500 }
+    );
   }
+}
+
+// Optional: Handle preflight (CORS) requests for browsers
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    },
+  });
 }
