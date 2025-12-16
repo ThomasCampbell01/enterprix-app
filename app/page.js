@@ -1,122 +1,129 @@
 "use client";
 
-import { useState } from "react";
-
-// Automatically picks correct backend URL
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+import { useState, useEffect } from "react";
+import { API_BASE_URL } from "./config";
 
 export default function Page() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [tier, setTier] = useState("free");
+  const [credits, setCredits] = useState("Loading...");
+  const [tier, setTier] = useState("Free");
   const [userId, setUserId] = useState("guest");
-  const [credits, setCredits] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
-  const sendMessage = async () => {
+  // Load initial system message
+  useEffect(() => {
+    setMessages([{ role: "system", content: "Enterprix Chatbot ready!" }]);
+  }, []);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
 
-    const newMessages = [...messages, { sender: "user", text: input }];
+    const newMessages = [...messages, { role: "user", content: input }];
     setMessages(newMessages);
-    setLoading(true);
+    setInput("");
+    setConnecting(true);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/chat`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: input,
+          messages: newMessages,
           userId,
           tier,
         }),
       });
 
-      const data = await res.json();
-
-      setMessages([
-        ...newMessages,
-        { sender: "bot", text: data.reply || "Error: No response" },
-      ]);
-
-      if (typeof data.remainingCredits !== "undefined") {
-        setCredits(data.remainingCredits);
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
       }
-    } catch (err) {
+
+      const data = await response.json();
+      const reply =
+        data.reply || data.message || "Error: No response from chatbot.";
+
+      setMessages([...newMessages, { role: "assistant", content: reply }]);
+    } catch (error) {
+      console.error("Error connecting to server:", error);
       setMessages([
         ...newMessages,
-        { sender: "bot", text: "Error connecting to server." },
+        { role: "assistant", content: "Error connecting to server." },
       ]);
     } finally {
-      setInput("");
-      setLoading(false);
+      setConnecting(false);
     }
   };
 
   return (
-    <div
-      style={{
-        backgroundColor: "#000",
-        color: "#fff",
-        minHeight: "100vh",
-        padding: "1rem",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <h2>Enterprix Chatbot</h2>
+    <div style={{ backgroundColor: "black", color: "white", height: "100vh" }}>
+      <h2 style={{ padding: "10px" }}>Enterprix Chatbot</h2>
 
-      <label>
-        Tier:{" "}
-        <select value={tier} onChange={(e) => setTier(e.target.value)}>
-          <option value="free">Free</option>
-          <option value="basic">Basic</option>
-          <option value="premium">Premium</option>
-        </select>
-      </label>
-      <br />
-
-      <label>
-        User ID:{" "}
-        <input
-          type="text"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-        />
-      </label>
+      <div style={{ padding: "0 10px" }}>
+        <label>
+          Tier:{" "}
+          <select
+            value={tier}
+            onChange={(e) => setTier(e.target.value)}
+            style={{ marginRight: "10px" }}
+          >
+            <option>Free</option>
+            <option>Pro</option>
+            <option>Enterprise</option>
+          </select>
+        </label>
+        <label>
+          User ID:{" "}
+          <input
+            type="text"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            style={{ width: "150px" }}
+          />
+        </label>
+      </div>
 
       <div
         style={{
-          background: "#111",
-          border: "1px solid #333",
-          padding: "10px",
-          height: "60vh",
-          marginTop: "10px",
+          height: "70%",
           overflowY: "auto",
+          backgroundColor: "#111",
+          margin: "10px",
+          padding: "10px",
+          borderRadius: "5px",
         }}
       >
-        {messages.map((msg, idx) => (
-          <p key={idx} style={{ color: msg.sender === "user" ? "#ccc" : "#0f0" }}>
-            <strong>{msg.sender === "user" ? "You" : "Bot"}:</strong> {msg.text}
-          </p>
+        {messages.map((msg, index) => (
+          <div
+            key={index}
+            style={{
+              color: msg.role === "assistant" ? "lime" : "white",
+              margin: "4px 0",
+            }}
+          >
+            <strong>{msg.role === "assistant" ? "Bot" : "You"}:</strong>{" "}
+            {msg.content}
+          </div>
         ))}
       </div>
 
-      <div style={{ marginTop: "10px" }}>
+      <div style={{ padding: "10px" }}>
         <input
           type="text"
-          placeholder="Type your message..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          style={{ width: "80%", padding: "5px" }}
+          placeholder="Type your message..."
+          style={{ width: "70%", marginRight: "10px" }}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
         />
-        <button onClick={sendMessage} disabled={loading} style={{ marginLeft: "5px" }}>
-          {loading ? "Sending..." : "Send"}
+        <button onClick={handleSend} disabled={connecting}>
+          {connecting ? "Sending..." : "Send"}
         </button>
       </div>
 
-      <p style={{ color: "#ff0", marginTop: "10px" }}>
-        💰 Remaining Credits: {credits !== null ? credits : "Loading..."}
-      </p>
+      <div style={{ color: "gold", paddingLeft: "10px" }}>
+        💰 Remaining Credits: {credits}
+      </div>
     </div>
   );
 }
